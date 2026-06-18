@@ -10,8 +10,6 @@ services:
     runtime: docker
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
-    # Run migrations then start — ensures schema is always up-to-date on deploy
-    startCommand: "npx prisma migrate deploy && node dist/server.js"
     # Use the production stage of the multi-stage Dockerfile
     envVars:
       - key: NODE_ENV

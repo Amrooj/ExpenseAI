@@ -1,0 +1,54 @@
+# ============================================================
+# docker-compose.prod.yml — Production Overrides
+# ============================================================
+#
+# TEACHING NOTE:
+# Docker Compose supports "override files". When you run:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# It MERGES this file on top of docker-compose.yml.
+# This lets us share common config in docker-compose.yml
+# and only override what changes in production.
+#
+# Key production differences:
+#   - No volume mounts for source code (no hot reload)
+#   - No development ports exposed to host
+#   - Build the "production" stage (optimized image)
+#   - Restart policies more aggressive
+# ============================================================
+
+version: '3.9'
+
+services:
+
+  db:
+    # In production, you'd likely use a managed DB (Railway, RDS, Supabase)
+    # But this config allows VPS self-hosting too
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # In production, do NOT expose DB port to host
+    # The backend reaches it via internal Docker network only
+    ports: !reset []
+
+  backend:
+    build:
+      target: production
+      # Uses the optimized production Docker build stage
+    restart: always
+    environment:
+      NODE_ENV: production
+    # No source code volume mounts in production
+    # The code is baked into the Docker image at build time
+    volumes:
+      - uploads_data:/app/uploads
+
+  frontend:
+    build:
+      target: production
+    restart: always
+
+volumes:
+  uploads_data:

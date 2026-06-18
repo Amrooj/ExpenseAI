@@ -1,0 +1,140 @@
+# ============================================================
+# docker-compose.yml — Development Environment
+# ============================================================
+#
+# TEACHING NOTE:
+# This file defines our entire development environment.
+# Running `docker compose up` will:
+#   1. Start a PostgreSQL database
+#   2. Start our Node.js backend (with hot reload)
+#   3. Start our React frontend (with hot reload)
+#
+# All three services talk to each other over a private
+# Docker network called `app-network`.
+# ============================================================
+
+version: '3.9'
+
+# ============================================================
+# SERVICES — Each service is one container
+# ============================================================
+services:
+
+  # ----------------------------------------------------------
+  # DATABASE — PostgreSQL
+  # ----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    # alpine = minimal Linux image (saves ~150MB vs full image)
+    container_name: expense_tracker_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-expense_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-expense_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-expense_tracker}
+    ports:
+      - "5432:5432"
+      # Format: "HOST_PORT:CONTAINER_PORT"
+      # This lets you connect from your machine with any DB client
+      # (e.g. TablePlus, DBeaver) on localhost:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Named volume = data persists even when container stops
+      # Without this, your database would be wiped every restart
+    networks:
+      - app-network
+    healthcheck:
+      # Docker will check if the DB is ready before starting the backend
+      # This prevents "connection refused" errors on first startup
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expense_user} -d ${POSTGRES_DB:-expense_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # BACKEND — Node.js + Express API
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+      # "target" uses Docker multi-stage builds.
+      # We have a "development" stage (with hot reload)
+      # and a "production" stage (optimized, smaller image).
+    container_name: expense_tracker_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+        # "service_healthy" means: wait for db healthcheck to pass
+        # before starting the backend. This solves startup race conditions.
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-expense_user}:${POSTGRES_PASSWORD:-expense_pass}@db:5432/${POSTGRES_DB:-expense_tracker}
+      # NOTE: hostname is "db" (the service name above), NOT localhost
+      # Inside Docker's network, services find each other by their service name
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_in_prod}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_in_prod}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-rule-based}
+      STORAGE_PROVIDER: local
+      UPLOAD_DIR: /app/uploads
+      PORT: 3000
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/src
+      # Mount source code for hot reload in development
+      # Changes to ./backend/src on your machine instantly
+      # appear inside the container at /app/src
+      - ./backend/uploads:/app/uploads
+      # Mount uploads folder so files persist between restarts
+      - /app/node_modules
+      # Anonymous volume to prevent host node_modules from
+      # overwriting container node_modules (different OS = different binaries)
+    networks:
+      - app-network
+
+  # ----------------------------------------------------------
+  # FRONTEND — React + Vite
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: expense_tracker_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - /app/node_modules
+    networks:
+      - app-network
+
+# ============================================================
+# VOLUMES — Persistent storage managed by Docker
+# ============================================================
+volumes:
+  postgres_data:
+    # This named volume stores PostgreSQL data files
+    # It survives `docker compose down` but is deleted with
+    # `docker compose down -v` (the -v flag removes volumes)
+
+# ============================================================
+# NETWORKS — Private communication channel between containers
+# ============================================================
+networks:
+  app-network:
+    driver: bridge
+    # bridge = private network where containers can talk to each
+    # other by service name, but are isolated from other Docker networks

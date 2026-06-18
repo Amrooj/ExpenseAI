@@ -1,0 +1,66 @@
+{
+  "compilerOptions": {
+    // ============================================================
+    // TARGET — What JavaScript version TypeScript compiles to
+    // ES2022 gives us modern features (async/await, optional chaining)
+    // while being compatible with Node.js 20+
+    // ============================================================
+    "target": "ES2022",
+    "lib": ["ES2022"],
+
+    // ============================================================
+    // MODULE SYSTEM — How files import each other
+    // NodeNext = use Node.js's native module system (ESM/CJS aware)
+    // ============================================================
+    "module": "CommonJS",
+    "moduleResolution": "node",
+
+    // ============================================================
+    // OUTPUT — Where compiled JavaScript goes
+    // rootDir must be "." (not "./src") because we compile both
+    // src/ and prisma/ directories together.
+    // ============================================================
+    "outDir": "./dist",
+    "rootDir": ".",
+
+    // ============================================================
+    // STRICTNESS — TypeScript's safety settings
+    // ALWAYS set strict: true in production projects.
+    // It enables all strict type-checking options.
+    // ============================================================
+    "strict": true,
+    "noImplicitAny": true,         // No implicit any types
+    "strictNullChecks": true,       // null/undefined must be handled
+    "noUncheckedIndexedAccess": true, // Array access returns T | undefined
+
+    // ============================================================
+    // QUALITY SETTINGS
+    // ============================================================
+    "noUnusedLocals": true,         // Error on unused variables
+    "noUnusedParameters": true,     // Error on unused function params
+    "noImplicitReturns": true,      // All code paths must return
+    "forceConsistentCasingInFileNames": true,
+
+    // ============================================================
+    // INTEROP — Makes CommonJS and ESM modules work together
+    // ============================================================
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    // ============================================================
+    // SOURCE MAPS — Maps compiled JS back to TypeScript source
+    // Essential for debugging — error stack traces point to TS files
+    // ============================================================
+    "sourceMap": true,
+    "declaration": true,            // Generate .d.ts type definition files
+
+    // ============================================================
+    // PERFORMANCE
+    // ============================================================
+    "skipLibCheck": true,           // Skip type-checking .d.ts files (faster builds)
+    "incremental": true             // Cache compilations for faster rebuilds
+  },
+  "include": ["src/**/*", "prisma/**/*"],
+  "exclude": ["node_modules", "dist", "tests/**/*"]
+}

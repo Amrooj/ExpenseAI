@@ -1,0 +1,287 @@
+// ============================================================
+// Prisma Schema — The Single Source of Truth for your database
+// ============================================================
+//
+// 🎓 TEACHING: What is a Database Schema?
+//
+// A schema is a blueprint of your database — it defines:
+//   - What tables exist (called "models" in Prisma)
+//   - What columns each table has
+//   - What data types each column holds
+//   - What relationships exist between tables
+//
+// WHY PRISMA SCHEMA SPECIFICALLY?
+//   When you run `prisma migrate dev`, Prisma:
+//     1. Reads this schema file
+//     2. Compares it to your current database
+//     3. Generates a SQL migration file
+//     4. Applies it to the database
+//     5. Generates TypeScript types that match your schema
+//
+// This means your database, your TypeScript types, and your
+// schema file are ALWAYS in sync. No manual SQL, no drift.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  // This tells Prisma to generate a JavaScript/TypeScript client
+  // After running `prisma generate`, you get full type-safe access:
+  // prisma.user.findUnique({ where: { id: "..." } })
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")       // Pooled connection (for app queries)
+  directUrl = env("DIRECT_URL")         // Direct connection (for migrations)
+  // 🎓 TEACHING: Why two URLs?
+  // Neon uses a connection POOLER (like PgBouncer) for performance.
+  // The pooled URL works for normal queries but NOT for migrations.
+  // Prisma migrations need a direct (non-pooled) connection.
+  // If you're using local PostgreSQL, both can be the same URL.
+}
+
+// ============================================================
+// ENUMS — Fixed set of allowed values
+//
+// 🎓 TEACHING: Why use enums instead of plain strings?
+//   - "monthly" could be stored as "Monthly", "MONTHLY", "monthly"
+//   - An enum enforces exactly one spelling — no inconsistency
+//   - TypeScript enum gives you autocomplete in your code editor
+// ============================================================
+
+enum RecurringInterval {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum AIProvider {
+  GEMINI
+  RULE_BASED
+}
+
+// ============================================================
+// MODEL: User
+// ============================================================
+//
+// 🎓 TEACHING: The User model is the center of our schema.
+// Every expense, category, and token belongs to a user.
+// This is called "ownership" — data isolation between users.
+//
+// Database Design Decisions:
+//   - `id` uses cuid() not auto-increment integers
+//     WHY? cuid is collision-resistant, URL-safe, and doesn't
+//     expose how many users you have (1,2,3... is a security leak)
+//   - `passwordHash` not `password`
+//     WHY? We NEVER store plain passwords — only bcrypt hashes
+//   - `defaultCurrency` is on User, not hardcoded
+//     WHY? Future multi-currency: each expense can override it
+// ============================================================
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  passwordHash    String
+  // Default currency for this user's expenses
+  // Future multi-currency: each Expense has its own currency field
+  defaultCurrency String   @default("USD")
+  // User's timezone for accurate date display
+  timezone        String   @default("UTC")
+  // Soft delete flag — we don't actually delete user data
+  // This is called "soft delete" pattern
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations — these don't create DB columns,
+  // they just tell Prisma how to JOIN tables
+  expenses      Expense[]
+  categories    Category[]
+  refreshTokens RefreshToken[]
+  budgets       Budget[]
+
+  // @@map tells Prisma to use "users" as the table name
+  // (Prisma convention is PascalCase model → snake_case table)
+  @@map("users")
+}
+
+// ============================================================
+// MODEL: Category
+// ============================================================
+//
+// Categories can be:
+//   1. System defaults (userId = null) — created by seed.ts
+//      e.g. "Food", "Transport", "Healthcare"
+//   2. User-created (userId = user's ID)
+//      e.g. "Guitar lessons", "Crypto"
+//
+// 🎓 TEACHING: This is the "nullable foreign key" pattern.
+// A null userId means "this belongs to everyone".
+// ============================================================
+model Category {
+  id        String  @id @default(cuid())
+  name      String
+  // Hex color for UI display: "#FF6B6B"
+  color     String  @default("#6366F1")
+  // Emoji or icon name: "🍕" or "food"
+  icon      String  @default("💰")
+  // isDefault = true means it's a system category available to all users
+  isDefault Boolean @default(false)
+  // null = system-wide category, set = user-created custom category
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  // A user can't have two categories with the same name
+  @@unique([name, userId])
+  @@index([userId])
+  @@map("categories")
+}
+
+// ============================================================
+// MODEL: Expense — The Core Entity
+// ============================================================
+//
+// 🎓 TEACHING: Key design decisions explained:
+//
+// `amount Decimal` vs `Float`:
+//   NEVER use Float for money. Float has precision errors:
+//   0.1 + 0.2 = 0.30000000000000004 in IEEE 754 floating point
+//   Decimal stores exact decimal values. Use Decimal(12, 2):
+//   - 12 total digits, 2 after the decimal point
+//   - Max value: $9,999,999,999.99
+//
+// `currency String`:
+//   Even though users have a defaultCurrency, we store currency
+//   per-expense. This makes future multi-currency trivial to add.
+//   Today it defaults to user's currency. Tomorrow you add a
+//   currency picker to the form — zero schema changes needed.
+//
+// `aiConfidence Float?`:
+//   The AI rates its own confidence (0.0 to 1.0).
+//   Below 0.7 → show user a "please confirm category" prompt.
+//   This is how production AI apps handle uncertainty.
+// ============================================================
+model Expense {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Decimal  @db.Decimal(12, 2)
+  currency    String   @default("USD")
+  description String
+  date        DateTime
+  categoryId  String
+
+  // Tags: array of strings, stored as PostgreSQL text[]
+  // e.g. ["work", "deductible", "client-dinner"]
+  tags        String[] @default([])
+
+  // Receipt image URL (local path or cloud URL)
+  receiptUrl  String?
+
+  // ── Recurring Expense Fields ─────────────────────────────
+  // Is this part of a recurring series?
+  isRecurring      Boolean           @default(false)
+  // How often does it recur?
+  recurringInterval RecurringInterval?
+  // When does the recurring series end? null = forever
+  recurringEndDate  DateTime?
+  // Link recurring expenses together (same series = same parentId)
+  recurringParentId String?
+
+  // ── AI Categorization Metadata ───────────────────────────
+  // How confident was the AI? (0.0 = guess, 1.0 = certain)
+  aiConfidence Float?
+  // Which provider categorized it?
+  aiProvider   AIProvider?
+  // Was the AI category overridden by the user?
+  aiOverridden Boolean @default(false)
+
+  // ── Notes ────────────────────────────────────────────────
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
+
+  // ── Indexes for performance ──────────────────────────────
+  // 🎓 TEACHING: Without indexes, every query scans the ENTIRE table.
+  // With indexes, PostgreSQL jumps directly to matching rows.
+  // Rule: Add indexes on columns you frequently filter/sort by.
+  @@index([userId])
+  @@index([userId, date])       // Dashboard date range queries
+  @@index([userId, categoryId]) // Category filter queries
+  @@index([date])
+  @@map("expenses")
+}
+
+// ============================================================
+// MODEL: RefreshToken
+// ============================================================
+//
+// 🎓 TEACHING: Why store refresh tokens in the database?
+//
+// JWT access tokens are STATELESS — the server doesn't track them.
+// If an access token is stolen, you can't revoke it (it's valid until expiry).
+// That's why we keep access tokens SHORT-LIVED (15 minutes).
+//
+// Refresh tokens ARE stored in the database, so we CAN revoke them.
+// If a user logs out or their account is compromised:
+//   1. Delete their refresh token from this table
+//   2. Their next refresh attempt fails
+//   3. They must log in again
+//
+// This is called "Token Rotation with Refresh Token Revocation"
+// — used by Google, Spotify, GitHub, etc.
+// ============================================================
+model RefreshToken {
+  id        String   @id @default(cuid())
+  // The actual token string (hashed before storage — M2)
+  token     String   @unique
+  userId    String
+  // When does this token expire?
+  expiresAt DateTime
+  // Track where the token was issued (for security audit)
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt]) // For cleanup jobs that delete expired tokens
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// MODEL: Budget — Bonus Feature
+// ============================================================
+//
+// Allows users to set monthly spending limits per category.
+// e.g. "I want to spend max $500 on Food in June 2024"
+// ============================================================
+model Budget {
+  id         String   @id @default(cuid())
+  userId     String
+  categoryId String?  // null = overall budget across all categories
+  amount     Decimal  @db.Decimal(12, 2)
+  // Which month/year this budget applies to (store as first day of month)
+  // e.g. June 2024 → 2024-06-01 00:00:00
+  month      DateTime
+  currency   String   @default("USD")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One budget per user per category per month
+  @@unique([userId, categoryId, month])
+  @@index([userId, month])
+  @@map("budgets")
+}

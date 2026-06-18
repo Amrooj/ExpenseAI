@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- SEO Meta Tags -->
+    <title>ExpenseAI — Smart Expense Tracker</title>
+    <meta name="description" content="AI-powered expense tracker with smart categorization, beautiful charts, and financial insights. Track spending, set budgets, and export reports." />
+    <meta name="keywords" content="expense tracker, budget, finance, AI, spending tracker" />
+    <meta name="author" content="ExpenseAI" />
+
+    <!-- Open Graph (for social sharing previews) -->
+    <meta property="og:title" content="ExpenseAI — Smart Expense Tracker" />
+    <meta property="og:description" content="AI-powered expense tracking with smart insights" />
+    <meta property="og:type" content="website" />
+
+    <!-- Google Fonts — Inter (modern, professional typeface) -->
+    <!-- preconnect: establishes early connection to Google Fonts servers
+         This saves ~100ms on first load by starting the DNS lookup early -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Theme color for mobile browsers -->
+    <meta name="theme-color" content="#0f0f1a" />
+  </head>
+  <body class="bg-dark-bg text-white antialiased">
+    <!--
+      🎓 TEACHING: Why id="root"?
+
+      React mounts your entire application inside this div.
+      Before React renders, the browser shows nothing (empty div).
+      React then takes control and renders all your components here.
+
+      This is called "Client-Side Rendering" (CSR).
+      The alternative is Server-Side Rendering (SSR) where the
+      server sends pre-rendered HTML — used by Next.js.
+    -->
+    <div id="root"></div>
+
+    <!--
+      🎓 TEACHING: type="module"
+
+      This tells the browser to treat this script as an ES Module.
+      Vite serves modules natively in development — the browser
+      requests each file individually instead of a bundle.
+      In production, Vite bundles everything for optimal performance.
+    -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

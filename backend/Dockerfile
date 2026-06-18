@@ -24,10 +24,10 @@
 # Shared foundation for both development and production
 FROM node:20-alpine AS base
 
-# Install dumb-init: a minimal init system for containers
+# Install dumb-init and openssl (required by Prisma engines on Alpine)
 # It properly handles Unix signals (SIGTERM, SIGINT) so
 # Docker can gracefully shut down your Node.js app
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init openssl
 
 # Set working directory inside the container
 WORKDIR /app
@@ -104,7 +104,8 @@ RUN npm ci --only=production && npx prisma generate
 # Copy compiled JavaScript from builder stage
 COPY --from=builder /app/dist ./dist
 
-RUN mkdir -p /app/uploads
+# Create uploads directory and change ownership to node user
+RUN mkdir -p /app/uploads && chown -R node:node /app
 
 # Run as non-root user
 USER node

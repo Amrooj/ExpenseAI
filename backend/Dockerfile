@@ -96,10 +96,6 @@ ENV NODE_ENV=production
 # Copy only what's needed for production:
 COPY package*.json ./
 COPY prisma ./prisma/
-COPY start.sh ./
-
-# Make startup script executable
-RUN chmod +x start.sh
 
 # Install ONLY production dependencies (no devDependencies)
 # This alone cuts ~200MB from the image
@@ -115,4 +111,4 @@ USER node
 
 EXPOSE 3000
 
-CMD ["dumb-init", "sh", "start.sh"]
+CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]

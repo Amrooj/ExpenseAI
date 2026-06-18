@@ -99,7 +99,7 @@ COPY prisma ./prisma/
 
 # Install ONLY production dependencies (no devDependencies)
 # This alone cuts ~200MB from the image
-RUN npm ci --only=production && npx prisma generate
+RUN npm ci --only=production && npm install --no-save prisma@5.14.0 && npx prisma generate
 
 # Copy compiled JavaScript from builder stage
 COPY --from=builder /app/dist ./dist

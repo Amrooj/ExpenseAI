@@ -111,4 +111,4 @@ USER node
 
 EXPOSE 3000
 
-CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && exec node dist/server.js"]
+CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && exec node dist/src/server.js"]

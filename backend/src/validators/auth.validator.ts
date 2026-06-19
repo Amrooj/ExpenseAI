@@ -86,8 +86,59 @@ export const refreshTokenSchema = z.object({
   }),
 });
 
+// ── Logout Schema ─────────────────────────────────────────────
+export const logoutSchema = z.object({
+  body: z.object({
+    refreshToken: z
+      .string({ required_error: "Refresh token is required" })
+      .min(1, "Refresh token is required"),
+  }),
+});
+
+// ── Update Profile Schema ─────────────────────────────────────
+export const updateProfileSchema = z.object({
+  body: z.object({
+    name: z
+      .string()
+      .trim()
+      .min(2, "Name must be at least 2 characters")
+      .max(100, "Name cannot exceed 100 characters")
+      .optional(),
+
+    defaultCurrency: z
+      .string()
+      .length(3, "Currency must be a 3-letter code (e.g. USD)")
+      .toUpperCase()
+      .optional(),
+
+    timezone: z.string().min(1, "Timezone cannot be empty").optional(),
+  }).refine(
+    (data) => Object.keys(data).length > 0,
+    { message: "At least one field must be provided" }
+  ),
+});
+
+// ── Change Password Schema ────────────────────────────────────
+// Uses identical password strength rules as registration.
+export const changePasswordSchema = z.object({
+  body: z.object({
+    currentPassword: z
+      .string({ required_error: "Current password is required" })
+      .min(1, "Current password is required"),
+
+    newPassword: z
+      .string({ required_error: "New password is required" })
+      .min(8, "Password must be at least 8 characters")
+      .max(72, "Password cannot exceed 72 characters")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/\d/, "Password must contain at least one number"),
+  }),
+});
+
 // ── TypeScript Types (inferred from Zod schemas) ──────────────
 // 🎓 TEACHING: z.infer<> extracts the TypeScript type from a schema.
 // You get type safety for FREE — no need to define types separately.
-export type RegisterDto = z.infer<typeof registerSchema>["body"];
-export type LoginDto    = z.infer<typeof loginSchema>["body"];
+export type RegisterDto       = z.infer<typeof registerSchema>["body"];
+export type LoginDto          = z.infer<typeof loginSchema>["body"];
+export type UpdateProfileDto  = z.infer<typeof updateProfileSchema>["body"];
+export type ChangePasswordDto = z.infer<typeof changePasswordSchema>["body"];

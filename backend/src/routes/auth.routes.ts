@@ -32,6 +32,9 @@ import {
   registerSchema,
   loginSchema,
   refreshTokenSchema,
+  logoutSchema,
+  updateProfileSchema,
+  changePasswordSchema,
 } from "../validators/auth.validator";
 
 const router = Router();
@@ -62,7 +65,7 @@ router.post(
 // POST /api/auth/logout
 // Note: logout doesn't require authenticate middleware
 // The refresh token itself identifies the session to revoke
-router.post("/logout", authController.logout);
+router.post("/logout", validate(logoutSchema), authController.logout);
 
 // ── Protected Routes (JWT required) ──────────────────────────
 
@@ -77,6 +80,7 @@ router.get(
 router.patch(
   "/me",
   authenticate,
+  validate(updateProfileSchema),
   authController.updateMe
 );
 
@@ -91,6 +95,7 @@ router.post(
 router.post(
   "/change-password",
   authenticate,
+  validate(changePasswordSchema),
   authController.changePassword
 );
 

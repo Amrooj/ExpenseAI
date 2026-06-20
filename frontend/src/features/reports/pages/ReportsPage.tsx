@@ -1,367 +1,223 @@
-// ============================================================
-// src/features/reports/pages/ReportsPage.tsx — Reports & Export
-// ============================================================
+import { useMemo, useState } from "react";
+import { useTrendsData } from "@/hooks/useAnalytics";
+import { useCategories } from "@/hooks/useCategories";
+import { formatCurrency, formatMonth } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BarChart3, PieChart as PieChartIcon } from "lucide-react";
+import { SkeletonCard } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 
-import { useState, useRef } from "react";
-import { useExpenses, useCategories, useSpendingTrends } from "../../../hooks/useExpenses";
-import { useAuthStore } from "../../../store/authStore";
-import { Expense } from "../../../types";
-import toast from "react-hot-toast";
-
-// ── CSV Parser ────────────────────────────────────────────────
-function parseCSV(text: string): Array<Record<string, string>> {
-  const lines = text.trim().split("\n");
-  if (lines.length < 2) return [];
-  const headers = lines[0]!.split(",").map((h) => h.trim().toLowerCase());
-  return lines.slice(1).map((line) => {
-    const values = line.split(",").map((v) => v.trim());
-    const row: Record<string, string> = {};
-    headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
-    return row;
-  });
-}
-
-// ── CSV Export ─────────────────────────────────────────────────
-function exportToCSV(expenses: Expense[], filename: string) {
-  const headers = ["Date", "Description", "Amount", "Currency", "Category", "Tags", "Notes", "Recurring"];
-  const rows = expenses.map((e) => [
-    new Date(e.date).toLocaleDateString(),
-    `"${e.description.replace(/"/g, '""')}"`,
-    e.amount,
-    e.currency,
-    e.category?.name ?? "",
-    (e.tags ?? []).join("; "),
-    `"${(e.notes ?? "").replace(/"/g, '""')}"`,
-    e.isRecurring ? "Yes" : "No",
-  ]);
-
-  const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-// ── PDF-style Report (HTML print) ─────────────────────────────
-function generatePrintReport(expenses: Expense[], summary: {
-  total: number; count: number; avg: number; currency: string;
-  topCategory: string; dateRange: string;
-}) {
-  const fmt = (n: number) => new Intl.NumberFormat("en-US", {
-    style: "currency", currency: summary.currency,
-  }).format(n);
-
-  const w = window.open("", "_blank");
-  if (!w) { toast.error("Please allow popups for PDF export"); return; }
-
-  w.document.write(`<!DOCTYPE html><html><head><title>ExpenseAI Report</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 40px; color: #1a1a2e; }
-    .header { border-bottom: 3px solid #6366f1; padding-bottom: 20px; margin-bottom: 30px; }
-    .header h1 { font-size: 28px; color: #6366f1; }
-    .header p { color: #666; margin-top: 4px; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 30px; }
-    .stat { background: #f8f9fa; border-radius: 12px; padding: 16px; }
-    .stat-label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
-    .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; color: #1a1a2e; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th { background: #6366f1; color: white; padding: 12px 16px; text-align: left; }
-    td { padding: 10px 16px; border-bottom: 1px solid #eee; }
-    tr:nth-child(even) { background: #f8f9fa; }
-    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #999; text-align: center; }
-    @media print { body { padding: 20px; } }
-  </style></head><body>
-    <div class="header">
-      <h1>📊 ExpenseAI Report</h1>
-      <p>${summary.dateRange} • Generated ${new Date().toLocaleDateString()}</p>
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="stat-label">Total Spent</div><div class="stat-value">${fmt(summary.total)}</div></div>
-      <div class="stat"><div class="stat-label">Expenses</div><div class="stat-value">${summary.count}</div></div>
-      <div class="stat"><div class="stat-label">Average</div><div class="stat-value">${fmt(summary.avg)}</div></div>
-      <div class="stat"><div class="stat-label">Top Category</div><div class="stat-value">${summary.topCategory}</div></div>
-    </div>
-    <table>
-      <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
-      <tbody>
-        ${expenses.map((e) => `<tr>
-          <td>${new Date(e.date).toLocaleDateString()}</td>
-          <td>${e.description}</td>
-          <td>${e.category?.icon ?? ""} ${e.category?.name ?? "Other"}</td>
-          <td style="text-align:right;font-weight:600">${fmt(e.amount)}</td>
-        </tr>`).join("")}
-      </tbody>
-    </table>
-    <div class="footer">Generated by ExpenseAI • ${new Date().toLocaleString()}</div>
-  </body></html>`);
-
-  w.document.close();
-  setTimeout(() => w.print(), 500);
-}
-
-// ── Import Modal ──────────────────────────────────────────────
-function ImportModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<Array<Record<string, string>>>([]);
-  const [importing, setImporting] = useState(false);
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = parseCSV(ev.target?.result as string);
-      setPreview(rows.slice(0, 5));
-    };
-    reader.readAsText(file);
-  };
-
-  const handleImport = async () => {
-    setImporting(true);
-    try {
-      const file = fileRef.current?.files?.[0];
-      if (!file) return;
-      const text = await file.text();
-      const rows = parseCSV(text);
-
-      const { default: api } = await import("../../../api/client");
-      const { data } = await api.post("/api/expenses/bulk-import", {
-        rows: rows.map((r) => ({
-          amount:      parseFloat(r["amount"] ?? "0"),
-          description: r["description"] ?? "",
-          date:        r["date"] ?? new Date().toISOString(),
-          category:    r["category"] ?? "Other",
-          currency:    r["currency"],
-          tags:        r["tags"],
-          notes:       r["notes"],
-        })),
-      });
-
-      toast.success(`Imported ${data.data?.imported ?? 0} expenses!`);
-      onClose();
-    } catch {
-      toast.error("Import failed. Check CSV format.");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-dark-surface border border-dark-border rounded-2xl w-full max-w-xl p-6 space-y-5 animate-fade-in">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white">Import CSV</h2>
-          <button onClick={onClose} className="text-dark-muted hover:text-white text-2xl">×</button>
-        </div>
-
-        {/* Format hint */}
-        <div className="p-4 bg-primary-500/10 border border-primary-500/20 rounded-xl text-sm">
-          <p className="text-primary-300 font-medium mb-1">Required CSV columns:</p>
-          <code className="text-xs text-dark-muted">amount, description, date, category</code>
-          <p className="text-xs text-dark-muted mt-1">Optional: currency, tags, notes</p>
-        </div>
-
-        {/* File input */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv"
-          onChange={handleFile}
-          className="input-field file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary-500/20 file:text-primary-300 file:text-sm file:cursor-pointer"
-        />
-
-        {/* Preview */}
-        {preview.length > 0 && (
-          <div className="overflow-x-auto">
-            <p className="text-sm text-dark-muted mb-2">Preview (first 5 rows):</p>
-            <table className="w-full text-xs">
-              <thead>
-                <tr>{Object.keys(preview[0]!).map((h) => (
-                  <th key={h} className="px-3 py-2 text-left text-dark-muted bg-dark-border/30 first:rounded-tl-lg last:rounded-tr-lg">{h}</th>
-                ))}</tr>
-              </thead>
-              <tbody>
-                {preview.map((row, i) => (
-                  <tr key={i} className="border-t border-dark-border/30">
-                    {Object.values(row).map((v, j) => (
-                      <td key={j} className="px-3 py-2 text-dark-text">{v}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <button onClick={handleImport} disabled={!preview.length || importing} className="btn-primary w-full py-3 disabled:opacity-50">
-          {importing ? "Importing..." : `Import ${preview.length > 0 ? "Expenses" : "(select file first)"}`}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Reports Page ─────────────────────────────────────────
 export default function ReportsPage() {
   const { user } = useAuthStore();
-  const [showImport, setShowImport] = useState(false);
-  const [dateRange, setDateRange] = useState<"month" | "quarter" | "year">("month");
+  const { data, isLoading } = useTrendsData();
+  const { data: categories } = useCategories();
+  const [timeRange, setTimeRange] = useState("6m"); // "6m" | "12m" | "all"
+  
+  const currency = user?.defaultCurrency || "USD";
 
-  // Calculate date range
-  const now = new Date();
-  const startDate = new Date(now);
-  if (dateRange === "month")   startDate.setMonth(now.getMonth() - 1);
-  if (dateRange === "quarter") startDate.setMonth(now.getMonth() - 3);
-  if (dateRange === "year")    startDate.setFullYear(now.getFullYear() - 1);
+  const monthlyData = useMemo(() => {
+    if (!data?.monthly) return [];
+    let sliceLen = data.monthly.length;
+    if (timeRange === "6m") sliceLen = 6;
+    if (timeRange === "12m") sliceLen = 12;
+    return [...data.monthly]
+      .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+      .slice(-sliceLen)
+      .map(d => ({
+        ...d,
+        displayMonth: formatMonth(d.month)
+      }));
+  }, [data?.monthly, timeRange]);
 
-  const { data } = useExpenses({
-    startDate: startDate.toISOString(),
-    endDate:   now.toISOString(),
-    limit:     1000,
-    sortBy:    "date",
-    sortOrder: "desc",
-  });
-  useSpendingTrends(); // Prefetch for cache warmup
-  const { data: categories = [] } = useCategories();
-
-  const expenses = (data?.data ?? []) as Expense[];
-  const currency = user?.defaultCurrency ?? "USD";
-  const total    = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const avg      = expenses.length > 0 ? total / expenses.length : 0;
-
-  // Top category
-  const catCounts: Record<string, number> = {};
-  expenses.forEach((e) => {
-    const name = e.category?.name ?? "Other";
-    catCounts[name] = (catCounts[name] ?? 0) + e.amount;
-  });
-  const topCategory = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "None";
-
-  const dateRangeLabel = dateRange === "month" ? "Last 30 days" : dateRange === "quarter" ? "Last 3 months" : "Last 12 months";
-
-  const handleExportCSV = () => {
-    exportToCSV(expenses, `expenses_${dateRange}_${new Date().toISOString().slice(0, 10)}.csv`);
-    toast.success("CSV exported!");
-  };
-
-  const handleExportPDF = () => {
-    generatePrintReport(expenses, {
-      total, count: expenses.length, avg, currency, topCategory, dateRange: dateRangeLabel,
-    });
-  };
-
-  // Category summary table
-  const categorySummary = Object.entries(catCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, amount]) => {
-      const cat = categories.find((c) => c.name === name);
+  const categoryData = useMemo(() => {
+    if (!data?.byCategory || !categories) return [];
+    return data.byCategory.map(item => {
+      const cat = categories.find(c => c.id === item.categoryId);
       return {
-        name, amount,
-        icon: cat?.icon ?? "📦",
-        color: cat?.color ?? "#6366F1",
-        count: expenses.filter((e) => (e.category?.name ?? "Other") === name).length,
-        pct: total > 0 ? (amount / total) * 100 : 0,
+        name: cat?.name || "Unknown",
+        value: item._sum.amount,
+        color: cat?.color || "#94a3b8"
       };
-    });
+    }).sort((a, b) => b.value - a.value);
+  }, [data?.byCategory, categories]);
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold gradient-text">Reports</h1>
-          <p className="text-dark-muted mt-1">Export your data & view insights</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setShowImport(true)} className="px-4 py-2.5 rounded-xl text-sm font-medium border border-dark-border text-dark-text hover:border-primary-500 hover:text-primary-400 transition-all">
-            📥 Import CSV
-          </button>
-          <button onClick={handleExportCSV} className="px-4 py-2.5 rounded-xl text-sm font-medium border border-dark-border text-dark-text hover:border-emerald-500 hover:text-emerald-400 transition-all">
-            📊 Export CSV
-          </button>
-          <button onClick={handleExportPDF} className="btn-primary flex items-center gap-2">
-            📄 Export PDF
-          </button>
-        </div>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Reports & Analytics</h1>
+        <p className="text-dark-muted mt-1">Deep dive into your financial habits.</p>
       </div>
 
-      {/* Date range toggle */}
-      <div className="flex gap-2">
-        {(["month", "quarter", "year"] as const).map((range) => (
-          <button
-            key={range}
-            onClick={() => setDateRange(range)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              dateRange === range
-                ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
-                : "text-dark-muted hover:text-dark-text border border-dark-border/50 hover:border-dark-border"
-            }`}
-          >
-            {range === "month" ? "30 Days" : range === "quarter" ? "3 Months" : "12 Months"}
-          </button>
-        ))}
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Spent", value: new Intl.NumberFormat("en-US", { style: "currency", currency }).format(total), icon: "💰" },
-          { label: "Expenses", value: expenses.length.toString(), icon: "🧾" },
-          { label: "Average", value: new Intl.NumberFormat("en-US", { style: "currency", currency }).format(avg), icon: "📊" },
-          { label: "Top Category", value: topCategory, icon: "🏷️" },
-        ].map(({ label, value, icon }) => (
-          <div key={label} className="card-hover">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{icon}</span>
-              <div>
-                <p className="text-xs text-dark-muted">{label}</p>
-                <p className="text-lg font-bold text-white">{value}</p>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Spending Trends */}
+        <Card className="flex flex-col">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-primary-400" />
+                Spending Trends
+              </CardTitle>
+              <CardDescription>Your expenses over time</CardDescription>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Category Breakdown Table */}
-      <div className="card p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Category Breakdown</h3>
-        {categorySummary.length > 0 ? (
-          <div className="space-y-3">
-            {categorySummary.map((cat) => (
-              <div key={cat.name} className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ backgroundColor: cat.color + "20" }}>
-                  {cat.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-white">{cat.name}</span>
-                    <span className="text-sm text-dark-muted">
-                      {new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cat.amount)}
-                      <span className="text-xs ml-2">({cat.pct.toFixed(1)}%)</span>
-                    </span>
-                  </div>
-                  <div className="h-2 bg-dark-border rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${cat.pct}%`, backgroundColor: cat.color }} />
-                  </div>
-                </div>
-                <span className="text-xs text-dark-muted w-16 text-right">{cat.count} items</span>
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="w-[120px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="6m">Last 6 Months</SelectItem>
+                <SelectItem value="12m">Last 12 Months</SelectItem>
+                <SelectItem value="all">All Time</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardHeader>
+          <CardContent className="flex-1 pt-4">
+            {isLoading ? (
+              <SkeletonCard className="h-[300px] w-full border-none bg-transparent" />
+            ) : monthlyData.length === 0 ? (
+              <EmptyState
+                icon={BarChart3}
+                title="No trend data"
+                description="Add more expenses over time to see your spending trends."
+              />
+            ) : (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#2d2d4a" />
+                    <XAxis 
+                      dataKey="displayMonth" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      dy={10}
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
+                      width={50}
+                    />
+                    <RechartsTooltip 
+                      cursor={{ fill: '#1e1e36' }}
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-dark-surface border border-dark-border rounded-lg p-3 shadow-xl">
+                              <p className="text-sm font-medium text-white mb-1">{label}</p>
+                              <p className="text-lg font-bold text-primary-400">
+                                {formatCurrency(payload[0].value as number, currency)}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar 
+                      dataKey="total" 
+                      fill="#6366f1" 
+                      radius={[4, 4, 0, 0]} 
+                      maxBarSize={50}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-dark-muted text-center py-8">No data for this period</p>
-        )}
-      </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Import Modal */}
-      <ImportModal isOpen={showImport} onClose={() => setShowImport(false)} />
+        {/* Category Breakdown */}
+        <Card className="flex flex-col">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2">
+              <PieChartIcon className="w-5 h-5 text-violet-400" />
+              Category Breakdown
+            </CardTitle>
+            <CardDescription>Where your money goes (All Time)</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 pt-4">
+            {isLoading ? (
+              <SkeletonCard className="h-[300px] w-full border-none bg-transparent" />
+            ) : categoryData.length === 0 ? (
+              <EmptyState
+                icon={PieChartIcon}
+                title="No category data"
+                description="Categorize your expenses to see this breakdown."
+              />
+            ) : (
+              <div className="flex flex-col h-full">
+                <div className="h-[220px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-dark-surface border border-dark-border rounded-lg p-3 shadow-xl flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: data.color }} />
+                                <div>
+                                  <p className="text-sm font-medium text-white">{data.name}</p>
+                                  <p className="text-sm font-bold text-slate-300">
+                                    {formatCurrency(data.value, currency)}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                {/* Legend */}
+                <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 max-h-[100px] overflow-y-auto pr-2 custom-scrollbar">
+                  {categoryData.map((cat) => (
+                    <div key={cat.name} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2 truncate">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                        <span className="text-slate-300 truncate">{cat.name}</span>
+                      </div>
+                      <span className="font-medium text-white ml-2 shrink-0">
+                        {formatCurrency(cat.value, currency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -1,166 +1,167 @@
-// ============================================================
-// src/features/auth/pages/LoginPage.tsx — Premium Login UI
-// ============================================================
+import { useState } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Eye, EyeOff, Sparkles, ArrowRight, Mail, Lock } from "lucide-react";
+import { toast } from "sonner";
+import { useAuthStore } from "@/store/authStore";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { extractErrorMessage } from "@/lib/utils";
 
-import { useState, FormEvent } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useAuthStore } from "../../../store/authStore";
+const schema = z.object({
+  email: z.string().min(1, "Email is required").email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+type FormData = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, isLoading } = useAuthStore();
+  const [showPassword, setShowPassword] = useState(false);
 
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [showPwd,  setShowPwd]  = useState(false);
+  const from = (location.state as { from?: Location })?.from?.pathname || "/dashboard";
 
-  // Redirect back to where user came from (or /dashboard)
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard";
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: FormData) => {
     try {
-      await login(email, password);
+      await login(data.email, data.password);
       navigate(from, { replace: true });
-    } catch {
-      // Error handling done in the store via toast
+    } catch (error: unknown) {
+      toast.error(extractErrorMessage(error));
     }
   };
 
   return (
     <div className="min-h-screen bg-dark-bg flex">
-      {/* ── Left Panel: Decorative ─────────────────────────── */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        {/* Gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-600 via-violet-600 to-fuchsia-600" />
-
-        {/* Animated circles */}
-        <div className="absolute top-20 left-20 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-32 right-16 w-96 h-96 bg-violet-300/10 rounded-full blur-3xl animate-pulse [animation-delay:1s]" />
-        <div className="absolute top-1/2 left-1/3 w-64 h-64 bg-fuchsia-400/10 rounded-full blur-2xl animate-pulse [animation-delay:2s]" />
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-center p-16 text-white">
-          <div className="space-y-6">
-            <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-              <span className="text-3xl">💰</span>
+      {/* Left panel — decorative */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary-950 via-dark-elevated to-dark-bg">
+        <div className="absolute inset-0">
+          <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-primary-600/15 rounded-full blur-3xl" />
+          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-violet-600/10 rounded-full blur-3xl" />
+        </div>
+        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-500 to-violet-600 flex items-center justify-center">
+              <Sparkles className="h-4 w-4 text-white" />
             </div>
-            <h1 className="text-5xl font-bold leading-tight">
-              Take Control of<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-white">
-                Your Finances
-              </span>
-            </h1>
-            <p className="text-lg text-white/70 max-w-md">
-              AI-powered expense tracking that categorizes your spending automatically
-              and gives you actionable insights.
-            </p>
-
-            {/* Feature pills */}
-            <div className="flex flex-wrap gap-3 pt-4">
-              {["AI Categorization", "Smart Reports", "Receipt Scanner", "Budget Alerts"].map((f) => (
-                <span key={f} className="px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-sm text-white/90 border border-white/20">
-                  {f}
+            <span className="font-bold text-white text-lg">ExpenseAI</span>
+          </div>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <h2 className="text-4xl font-bold text-white leading-tight">
+                Your finances,<br />
+                <span className="bg-gradient-to-r from-primary-400 to-violet-400 bg-clip-text text-transparent">
+                  finally clear
                 </span>
+              </h2>
+              <p className="text-dark-muted text-lg leading-relaxed">
+                Track expenses intelligently with AI-powered insights and beautiful analytics.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "AI Categorization", icon: "✦" },
+                { label: "Visual Analytics", icon: "◈" },
+                { label: "Multi-Currency", icon: "◎" },
+                { label: "Secure & Private", icon: "◉" },
+              ].map(({ label, icon }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-slate-300"
+                >
+                  <span className="text-primary-400">{icon}</span>
+                  {label}
+                </div>
               ))}
             </div>
           </div>
+          <p className="text-dark-muted text-sm">
+            Trusted by developers and finance-conscious individuals worldwide.
+          </p>
         </div>
       </div>
 
-      {/* ── Right Panel: Login Form ────────────────────────── */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      {/* Right panel — form */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md space-y-8">
-          {/* Logo */}
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-primary-500 to-violet-600 rounded-2xl mb-4">
-              <span className="text-white text-2xl font-bold">E</span>
+          {/* Mobile logo */}
+          <div className="flex items-center gap-2 lg:hidden">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-violet-600 flex items-center justify-center">
+              <Sparkles className="h-3.5 w-3.5 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-white">Welcome back</h2>
-            <p className="mt-2 text-dark-muted">Sign in to your ExpenseAI account</p>
+            <span className="font-bold text-white">ExpenseAI</span>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email */}
-            <div className="space-y-2">
-              <label htmlFor="login-email" className="block text-sm font-medium text-dark-text">
-                Email address
-              </label>
-              <input
-                id="login-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
-                placeholder="you@example.com"
-              />
-            </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-white">Welcome back</h1>
+            <p className="text-dark-muted text-sm">
+              Sign in to your account to continue
+            </p>
+          </div>
 
-            {/* Password */}
-            <div className="space-y-2">
-              <label htmlFor="login-password" className="block text-sm font-medium text-dark-text">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="login-password"
-                  type={showPwd ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="input-field pr-12"
-                  placeholder="Enter your password"
-                />
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <Input
+              {...register("email")}
+              type="email"
+              label="Email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              error={errors.email?.message}
+              leftIcon={<Mail className="h-4 w-4" />}
+              disabled={isLoading}
+            />
+
+            <Input
+              {...register("password")}
+              type={showPassword ? "text" : "password"}
+              label="Password"
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              error={errors.password?.message}
+              leftIcon={<Lock className="h-4 w-4" />}
+              rightElement={
                 <button
                   type="button"
-                  onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-muted hover:text-dark-text transition-colors"
-                  aria-label={showPwd ? "Hide password" : "Show password"}
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-dark-muted hover:text-white transition-colors"
+                  tabIndex={-1}
                 >
-                  {showPwd ? "🙈" : "👁️"}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
-              </div>
-            </div>
-
-            {/* Submit */}
-            <button
-              type="submit"
+              }
               disabled={isLoading}
-              className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+            />
+
+            <Button
+              type="submit"
+              variant="default"
+              size="lg"
+              loading={isLoading}
+              className="w-full mt-2"
             >
-              {isLoading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign In"
-              )}
-            </button>
+              {isLoading ? "Signing in..." : "Sign in"}
+              {!isLoading && <ArrowRight className="h-4 w-4" />}
+            </Button>
           </form>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-dark-border" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-dark-bg text-dark-muted">New to ExpenseAI?</span>
-            </div>
-          </div>
-
-          {/* Register link */}
-          <div className="text-center">
+          <div className="text-center text-sm">
+            <span className="text-dark-muted">Don&apos;t have an account? </span>
             <Link
               to="/register"
               className="text-primary-400 hover:text-primary-300 font-medium transition-colors"
             >
-              Create a free account →
+              Create one
             </Link>
           </div>
         </div>

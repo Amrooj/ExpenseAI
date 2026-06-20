@@ -1,18 +1,3 @@
-// ============================================================
-// src/types/index.ts — Shared Frontend TypeScript Types
-// ============================================================
-//
-// 🎓 TEACHING: Why mirror backend types on the frontend?
-//
-// In a monorepo setup, you'd share types between backend and frontend
-// using a shared package (e.g., @expense-tracker/types).
-//
-// In our setup, we duplicate the core types on the frontend.
-// This is acceptable for now — in a larger project, extract them
-// to a shared package to eliminate duplication.
-// ============================================================
-
-// ── API Response ──────────────────────────────────────────────
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -29,7 +14,6 @@ export interface PaginationMeta {
   hasPrevPage: boolean;
 }
 
-// ── User ──────────────────────────────────────────────────────
 export interface User {
   id: string;
   email: string;
@@ -49,7 +33,6 @@ export interface LoginResponse {
   tokens: AuthTokens;
 }
 
-// ── Category ──────────────────────────────────────────────────
 export interface Category {
   id: string;
   name: string;
@@ -57,19 +40,20 @@ export interface Category {
   icon: string;
   isDefault: boolean;
   userId: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// ── Expense ───────────────────────────────────────────────────
 export type RecurringInterval = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 export type AIProvider = "GEMINI" | "RULE_BASED";
 
 export interface Expense {
   id: string;
   userId: string;
-  amount: number;   // Frontend works with numbers (Prisma Decimal → number in JSON)
+  amount: number | string;
   currency: string;
   description: string;
-  date: string;     // ISO string from API
+  date: string;
   categoryId: string;
   category: Category;
   tags: string[];
@@ -102,7 +86,6 @@ export interface UpdateExpenseDto extends Partial<CreateExpenseDto> {
   aiOverridden?: boolean;
 }
 
-// ── Budget ────────────────────────────────────────────────────
 export interface Budget {
   id: string;
   userId: string;
@@ -112,29 +95,18 @@ export interface Budget {
   currency: string;
 }
 
-// ── Analytics ─────────────────────────────────────────────────
-export interface MonthlySummary {
-  totalSpent: number;
+export interface DashboardData {
+  thisMonth: { total: number; count: number; average: number };
+  lastMonth: { total: number };
+  changePercent: number;
   totalExpenses: number;
-  averageExpense: number;
-  topCategory: Category | null;
-  currency: string;
-  month: string;
 }
 
-export interface CategoryBreakdown {
-  category: Category;
-  total: number;
-  count: number;
-  percentage: number;
+export interface TrendsData {
+  monthly: Array<{ month: string; total: number }>;
+  byCategory: Array<{ categoryId: string; _sum: { amount: number }; _count: number }>;
 }
 
-export interface SpendingTrend {
-  date: string;
-  total: number;
-}
-
-// ── Filter & Sort ─────────────────────────────────────────────
 export interface ExpenseFilters {
   search?: string;
   categoryId?: string;
@@ -146,9 +118,16 @@ export interface ExpenseFilters {
   isRecurring?: boolean;
   page?: number;
   limit?: number;
-  sortBy?: "date" | "amount" | "description";
+  sortBy?: "date" | "amount" | "description" | "createdAt";
   sortOrder?: "asc" | "desc";
 }
 
-// ── Theme ─────────────────────────────────────────────────────
+export interface CategorySuggestion {
+  categoryId: string;
+  categoryName: string;
+  confidence: number;
+  provider: string;
+  requiresConfirmation: boolean;
+}
+
 export type Theme = "dark" | "light";
